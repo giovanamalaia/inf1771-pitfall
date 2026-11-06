@@ -2,13 +2,15 @@
 import pygame
 import sys, time, random
 from pyswip import Prolog, Functor, Variable, Query
-
+from metrics_tracker import MetricsTracker
 import pathlib
+
 current_path = str(pathlib.Path().resolve())
+tracker = MetricsTracker()
 
 elapsed_time = 0
 auto_play_tempo = 0.5
-auto_play = False # desligar para controlar manualmente
+auto_play = True # false para testar controlar manualmente
 show_map = False
 
 scale = 60
@@ -38,7 +40,7 @@ mapa=[['','','','','','','','','','','',''],
 visitados = []
 certezas = []
 
-pl_file = (current_path + '\\main.pl').replace('\\','/')
+pl_file = (current_path + '/../prolog/agente.pl') 
 prolog = Prolog()
 prolog.consult(pl_file)
 
@@ -252,17 +254,60 @@ def load():
     bw_img_health_size = (width/size_x, height/size_y)
     bw_img_health = pygame.transform.scale(bw_img_health, bw_img_health_size)  
 
+def get_sensores():
+    global player_pos, mapa
+    px = player_pos[0] - 1  
+    py = player_pos[1] - 1  
+
+    brisa, passos, palmas, brilho, reflexo = 0, 0, 0, 0, 0
+
+    casa_atual = mapa[11 - py][px]
+    
+    # verifica Brilho e Reflexo na própria casa
+    if 'O' in casa_atual: brilho = 1
+    if 'U' in casa_atual: reflexo = 1
+
+    # define casas adjacentes (sem diagonais)
+    adj = [(px, py-1), (px, py+1), (px-1, py), (px+1, py)]
+    
+    for ax, ay in adj:
+        if 0 <= ax < 12 and 0 <= ay < 12:
+            casa_adj = mapa[11 - ay][ax] # Inverte o Y 
+            if 'P' in casa_adj: brisa = 1
+            if 'D' in casa_adj or 'd' in casa_adj: passos = 1
+            if 'T' in casa_adj: palmas = 1
+
+    return brisa, passos, palmas, brilho, reflexo
+
 def update(dt, screen):
-    
     global elapsed_time
-    
     elapsed_time += dt
-    
     if (elapsed_time / 1000) > auto_play_tempo:
         
         if auto_play and player_pos[2] != 'morto':
-            exec_prolog(decisao())
+            # pega sensores do ambiente atual
+            brisa, passos, palmas, brilho, reflexo = get_sensores()
+            
+            # envia para a Inferência 
+            comando = f"atualiza_sensores({brisa}, {passos}, {palmas}, {brilho}, {reflexo})"
+            list(prolog.query(comando))
+            
+            # pede e executa a Decisão 
+            acao = decisao()
+            if acao: 
+                 # trackeamento para as métricas 
+                 tracker.registrar_acao(acao)
+                 
+                 # se a ação foi pegar e tinha brilho, regista 
+                 if acao == 'pegar' and brilho == 1:
+                     tracker.registrar_ouro()
+                     
+                 exec_prolog(acao)
+            
             update_prolog()
+            
+            # atualiza com a pontuação e estado de vida deste turno
+            tracker.atualizar_status(pontuacao, player_pos[2])
        
         elapsed_time = 0
         

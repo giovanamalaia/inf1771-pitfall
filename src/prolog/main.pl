@@ -6,7 +6,7 @@
 :-dynamic energia/1.
 :-dynamic pontuacao/1.
 
-:-consult('mapa.pl').
+:- consult('../../mapas/mapa.pl').
 
 delete([], _, []).
 delete([Elem|Tail], Del, Result) :-
@@ -243,7 +243,6 @@ show_mem(_,0) :- energia(E), pontuacao(P), write('E: '), write(E), write('   P: 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %apagar esta linha - apenas para demonstracao aleatoria
-executa_acao(X) :- L=['virar_esquerda','virar_direita','andar','pegar'],random_between(1,4,I), nth1(I, L, X),!.
 
 %apagar linhas abaixo... sao exemplos de resposta
 %executa_acao(andar) :- posicao(PX, _, oeste), PX > 1, X = andar,!.
