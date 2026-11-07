@@ -1,3 +1,4 @@
+:- consult('inferencia.pl').
 
 :-dynamic posicao/3.
 :-dynamic memory/3.
