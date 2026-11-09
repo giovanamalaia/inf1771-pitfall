@@ -4,9 +4,15 @@ import sys, time, random
 from pyswip import Prolog, Functor, Variable, Query
 from metrics_tracker import MetricsTracker
 import pathlib
+from a_search import AStarNavegador 
 
 current_path = str(pathlib.Path().resolve())
 tracker = MetricsTracker()
+pl_file = (current_path + '/../prolog/agente.pl') 
+prolog = Prolog()
+prolog.consult(pl_file)
+navegador = AStarNavegador(prolog)
+fila_acoes_a_estrela = []
 
 elapsed_time = 0
 auto_play_tempo = 0.5
@@ -20,9 +26,9 @@ width = size_x * scale  #Largura Janela
 height = size_y * scale #Altura Janela
 
 player_pos = (1,1,'norte')
+posicao_anterior = (1, 1)
 energia = 0
 pontuacao = 0
-
 
 mapa=[['','','','','','','','','','','',''],
       ['','','','','','','','','','','',''],
@@ -39,23 +45,14 @@ mapa=[['','','','','','','','','','','',''],
 
 visitados = []
 certezas = []
-
-pl_file = (current_path + '/../prolog/agente.pl') 
-prolog = Prolog()
-prolog.consult(pl_file)
-
 last_action = ""
 
 def decisao():
-
     acao = ""    
-    
     acoes = list(prolog.query("executa_acao(X)"))
     if len(acoes) > 0:
         acao = acoes[0]['X']
-
     return acao
-
 
 def exec_prolog(a):
     global last_action
@@ -151,9 +148,6 @@ def update_prolog():
     pontuacao = x.value
     pontuacao_query.closeQuery()
 
-    #print(mapa)
-    #print(player_pos)
-
 
 def load():
     global sys_font, clock, img_wall, img_grass, img_start, img_finish, img_path
@@ -165,12 +159,9 @@ def load():
     clock = pygame.time.Clock() 
 
     img_wall = pygame.image.load('wall.jpg')
-    #img_wall2_size = (img_wall.get_width()/map_width, img_wall.get_height()/map_height)
     img_wall_size = (width/size_x, height/size_y)
-    
     img_wall = pygame.transform.scale(img_wall, img_wall_size)
 
-    
     img_player_up = pygame.image.load('player_up.png')
     img_player_up_size = (width/size_x, height/size_y)
     img_player_up = pygame.transform.scale(img_player_up, img_player_up_size)
@@ -187,12 +178,9 @@ def load():
     img_player_right_size = (width/size_x, height/size_y)
     img_player_right = pygame.transform.scale(img_player_right, img_player_right_size)
 
-
     img_tomb = pygame.image.load('tombstone.png')
     img_tomb_size = (width/size_x, height/size_y)
     img_tomb = pygame.transform.scale(img_tomb, img_tomb_size)
-
-
 
     img_grass = pygame.image.load('grass.jpg')
     img_grass_size = (width/size_x, height/size_y)
@@ -263,72 +251,108 @@ def get_sensores():
 
     casa_atual = mapa[11 - py][px]
     
-    # verifica Brilho e Reflexo na própria casa
     if 'O' in casa_atual: brilho = 1
     if 'U' in casa_atual: reflexo = 1
 
-    # define casas adjacentes (sem diagonais)
     adj = [(px, py-1), (px, py+1), (px-1, py), (px+1, py)]
     
     for ax, ay in adj:
         if 0 <= ax < 12 and 0 <= ay < 12:
-            casa_adj = mapa[11 - ay][ax] # Inverte o Y 
+            casa_adj = mapa[11 - ay][ax] 
             if 'P' in casa_adj: brisa = 1
             if 'D' in casa_adj or 'd' in casa_adj: passos = 1
             if 'T' in casa_adj: palmas = 1
 
     return brisa, passos, palmas, brilho, reflexo
 
+
+# Função que decide o alvo da exploração
+def buscar_destino_exploracao(px, py):
+    visitadas = set((res["X"], res["Y"]) for res in prolog.query("visitada(X, Y)"))
+    seguras = set((res["X"], res["Y"]) for res in prolog.query("segura(X, Y)"))
+    
+    nao_visitadas = seguras - visitadas
+    if not nao_visitadas:
+        return None 
+        
+    return min(nao_visitadas, key=lambda dest: abs(dest[0]-px) + abs(dest[1]-py))
+
+
 def update(dt, screen):
-    global elapsed_time
+    global elapsed_time, posicao_anterior, fila_acoes_a_estrela
     elapsed_time += dt
     if (elapsed_time / 1000) > auto_play_tempo:
         
         if auto_play and player_pos[2] != 'morto':
-            # pega sensores do ambiente atual
+            px, py = player_pos[0], player_pos[1]
+            
+            if abs(px - posicao_anterior[0]) > 1 or abs(py - posicao_anterior[1]) > 1:
+                list(prolog.query(f"teletransporta({px}, {py})"))
+            posicao_anterior = (px, py)
+            
+            list(prolog.query(f"atualiza_posicao({px}, {py})"))
+            
             brisa, passos, palmas, brilho, reflexo = get_sensores()
             
-            # envia para a Inferência 
-            comando = f"atualiza_sensores({brisa}, {passos}, {palmas}, {brilho}, {reflexo})"
+            t_brisa = 'true' if brisa else 'false'
+            t_passos = 'true' if passos else 'false'
+            t_palmas = 'true' if palmas else 'false'
+            t_brilho = 'true' if brilho else 'false'
+            t_reflexo = 'true' if reflexo else 'false'
+            
+            comando = f"atualiza_estado({t_brisa}, {t_passos}, {t_palmas}, {t_brilho}, {t_reflexo})"
             list(prolog.query(comando))
             
-            # pede e executa a Decisão 
+            # A*: Consome ações se houver rota pendente
+            if fila_acoes_a_estrela:
+                acao = fila_acoes_a_estrela.pop(0)
+                tracker.registrar_acao(acao)
+                exec_prolog(acao)
+                update_prolog()
+                tracker.atualizar_status(pontuacao, player_pos[2])
+                elapsed_time = 0
+                return 
+
+            # Pede a Decisão
             acao = decisao()
-            if acao: 
-                 # trackeamento para as métricas 
+            
+            # aor retornar 'explorar', aciona a navegação longa
+            if acao == 'explorar':
+                destino = buscar_destino_exploracao(px, py)
+                if destino:
+                    rota = navegador.calcular_rota((px, py), destino)
+                    if rota:
+                        fila_acoes_a_estrela = navegador.converter_rota_em_acoes((px, py), rota, player_pos[2])
+                else:
+                    print("Exploração terminada: Não há mais casas seguras desconhecidas.")
+            
+            elif acao: 
                  tracker.registrar_acao(acao)
-                 
-                 # se a ação foi pegar e tinha brilho, regista 
                  if acao == 'pegar' and brilho == 1:
                      tracker.registrar_ouro()
-                     
                  exec_prolog(acao)
             
             update_prolog()
-            
-            # atualiza com a pontuação e estado de vida deste turno
             tracker.atualizar_status(pontuacao, player_pos[2])
        
         elapsed_time = 0
         
     
-
 def key_pressed(event):
     
     global show_map
-    #leitura do teclado
     if event.type == pygame.KEYDOWN:
         
         if not auto_play and player_pos[2] != 'morto':
-            if event.key == pygame.K_LEFT: #tecla esquerda
+            if event.key == pygame.K_LEFT: 
                 exec_prolog("virar_esquerda")
                 update_prolog()
 
-            elif event.key == pygame.K_RIGHT: #tecla direita
+            elif event.key == pygame.K_RIGHT: 
                 exec_prolog("virar_direita")
                 update_prolog()
 
-            elif event.key == pygame.K_UP: #tecla  cima
+            elif event.key == pygame.K_UP: 
                 exec_prolog("andar")
                 update_prolog()
 
@@ -426,20 +450,13 @@ def main_loop(screen):
             
             key_pressed(e)
             
-        # Calcula tempo transcorrido desde
-        # a última atualização 
         dt = clock.tick()
         
-        
-        # Atualiza posição dos objetos da tela
         update(dt, screen)
         
-        # Desenha objetos na tela 
         draw_screen(screen)
 
-        # Pygame atualiza o seu estado
         pygame.display.update() 
-
 
 update_prolog()
 
@@ -450,6 +467,3 @@ load()
 
 main_loop(screen)
 pygame.quit()
-
-
-

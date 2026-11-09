@@ -1,3 +1,6 @@
+import csv
+import os
+
 class MetricsTracker:
     def __init__(self):
         self.acoes_executadas = 0
@@ -20,17 +23,36 @@ class MetricsTracker:
         self.pontuacao_final = pontuacao_atual
         if estado_jogador == 'morto':
             self.sobreviveu = False
-            self.encerrar_jogo()
 
-    def encerrar_jogo(self):
-        """Imprime o relatório final apenas uma vez quando o jogo acaba."""
+    def exportar_relatorio(self, nome_mapa="mapa_padrao"):
+        """
+        Imprime o relatório e salva os dados no CSV para o vídeo final.
+        (Task 3.4 e 3.5: salvar ao fim de cada mapa)
+        """
         if not self.jogo_encerrado:
             self.jogo_encerrado = True
+            
             print("\n" + "="*30)
-            print(" RELATÓRIO DE DESEMPENHO ")
+            print(f" RELATÓRIO: {nome_mapa.upper()}")
             print("="*30)
-            print(f"Ouro Coletado:   {self.ouro_coletado} de 3")
+            print(f"Ouro Coletado:   {self.ouro_coletado}")
             print(f"Ações Executadas: {self.acoes_executadas}")
             print(f"Pontuação Final:  {self.pontuacao_final}")
-            print(f"Sobreviveu:       {'Sim' if self.sobreviveu else 'Não (Caiu em poço)'}")
+            print(f"Sobreviveu:       {'Sim' if self.sobreviveu else 'Não'}")
             print("="*30 + "\n")
+            
+            arquivo_csv = "relatorio_metricas.csv"
+            cabecalho = not os.path.exists(arquivo_csv)
+            
+            with open(arquivo_csv, mode='a', newline='', encoding='utf-8') as file:
+                writer = csv.writer(file)
+                if cabecalho:
+                    writer.writerow(["Mapa", "Ouro", "Acoes", "Pontuacao", "Sobreviveu"])
+                
+                writer.writerow([
+                    nome_mapa, 
+                    self.ouro_coletado, 
+                    self.acoes_executadas, 
+                    self.pontuacao_final, 
+                    "Sim" if self.sobreviveu else "Não"
+                ])
