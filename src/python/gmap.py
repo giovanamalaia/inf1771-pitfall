@@ -242,26 +242,30 @@ def load():
     bw_img_health_size = (width/size_x, height/size_y)
     bw_img_health = pygame.transform.scale(bw_img_health, bw_img_health_size)  
 
+
+
 def get_sensores():
-    global player_pos, mapa
-    px = player_pos[0] - 1  
-    py = player_pos[1] - 1  
+    global player_pos
+    px, py = player_pos[0], player_pos[1]
 
     brisa, passos, palmas, brilho, reflexo = 0, 0, 0, 0, 0
 
-    casa_atual = mapa[11 - py][px]
-    
-    if 'O' in casa_atual: brilho = 1
-    if 'U' in casa_atual: reflexo = 1
+    # Lê os sensores direto dos fatos tile/3 do mapa carregado no Prolog
+    res_local = list(prolog.query(f"tile({px}, {py}, Z)"))
+    if res_local:
+        tile_atual = str(res_local[0]['Z'])
+        if tile_atual == 'O': brilho = 1
+        if tile_atual == 'U': reflexo = 1
 
-    adj = [(px, py-1), (px, py+1), (px-1, py), (px+1, py)]
-    
-    for ax, ay in adj:
-        if 0 <= ax < 12 and 0 <= ay < 12:
-            casa_adj = mapa[11 - ay][ax] 
-            if 'P' in casa_adj: brisa = 1
-            if 'D' in casa_adj or 'd' in casa_adj: passos = 1
-            if 'T' in casa_adj: palmas = 1
+    adjacentes = [(px, py+1), (px, py-1), (px+1, py), (px-1, py)]
+    for ax, ay in adjacentes:
+        if 1 <= ax <= 12 and 1 <= ay <= 12:
+            res_adj = list(prolog.query(f"tile({ax}, {ay}, Z)"))
+            if res_adj:
+                tile_adj = str(res_adj[0]['Z'])
+                if tile_adj == 'P': brisa = 1
+                if tile_adj in ['D', 'd']: passos = 1
+                if tile_adj == 'T': palmas = 1
 
     return brisa, passos, palmas, brilho, reflexo
 

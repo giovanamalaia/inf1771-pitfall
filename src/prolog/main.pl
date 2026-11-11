@@ -1,4 +1,5 @@
 :- consult('inferencia.pl').
+:- consult('decisao.pl').
 
 :-dynamic posicao/3.
 :-dynamic memory/3.
@@ -7,7 +8,7 @@
 :-dynamic energia/1.
 :-dynamic pontuacao/1.
 
-:- consult('../../mapas/mapa.pl').
+:- consult('../../mapas/mapa-facil.pl').
 
 delete([], _, []).
 delete([Elem|Tail], Del, Result) :-
@@ -238,18 +239,6 @@ show_mem :- map_size(_,MAX_Y), show_mem(1,MAX_Y),!.
 show_mem(X,Y) :- Y >= 1, map_size(MAX_X,_), X =< MAX_X, show_mem_position(X,Y), write('|'), XX is X + 1, show_mem(XX, Y),!.
 show_mem(X,Y) :- Y >= 1, map_size(X,_),YY is Y - 1, write(Y), nl, show_mem(1, YY),!.
 show_mem(_,0) :- energia(E), pontuacao(P), write('E: '), write(E), write('   P: '), write(P),!.
-
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-%apagar esta linha - apenas para demonstracao aleatoria
-
-%apagar linhas abaixo... sao exemplos de resposta
-%executa_acao(andar) :- posicao(PX, _, oeste), PX > 1, X = andar,!.
-%executa_acao(andar) :- posicao(PX, _, leste), PX < 3, X = andar,!.
-%executa_acao(pegar) :- posicao(PX, PY,_), tem_ouro(PX, PY), !.
-%executa_acao(voltar) :- peguei_todos_ouros,!.
 
 
 
