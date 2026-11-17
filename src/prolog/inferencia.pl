@@ -52,7 +52,8 @@ atualiza_estado(Brisa, Passos, _Palmas, _Ouro, _Cura) :-
     ->  forall(member((AX,AY), Adj), marca_segura(AX, AY))
     ;   marca_riscos(Adj, Brisa, Passos)
     ),
-    desambigua.
+    desambigua,
+    propaga_seguranca.
 
 % define onde o agente está
 atualiza_posicao(X, Y) :-
@@ -107,6 +108,20 @@ desambigua_casa(X, Y) :-
     (   \+ possivel_poco(X, Y), \+ possivel_monstro(X, Y)
     ->  afirma(segura(X, Y))
     ;   true ).
+
+% Propaga segurança adicional para fechar lacunas no conhecimento do A*
+propaga_seguranca :-
+    findall((X, Y), (visitada(X, Y), \+ sentiu(X, Y, brisa), \+ sentiu(X, Y, passos)), VisitadasLivres),
+    forall(member((X, Y), VisitadasLivres),
+           (
+               adjacentes_validas(X, Y, Adj),
+               forall(member((AX, AY), Adj),
+                      (
+                          desconhecida(AX, AY) -> marca_segura(AX, AY)
+                      ;   true
+                      )
+               )
+           )).
 
 % --- Task 1.5: teletransporte ---
 

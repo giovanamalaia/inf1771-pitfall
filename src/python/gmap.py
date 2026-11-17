@@ -15,7 +15,7 @@ navegador = AStarNavegador(prolog)
 fila_acoes_a_estrela = []
 
 elapsed_time = 0
-auto_play_tempo = 0.5
+auto_play_tempo = 0.3
 auto_play = True # false para testar controlar manualmente
 show_map = False
 
@@ -243,14 +243,12 @@ def load():
     bw_img_health = pygame.transform.scale(bw_img_health, bw_img_health_size)  
 
 
-
 def get_sensores():
     global player_pos
     px, py = player_pos[0], player_pos[1]
 
     brisa, passos, palmas, brilho, reflexo = 0, 0, 0, 0, 0
 
-    # Lê os sensores direto dos fatos tile/3 do mapa carregado no Prolog
     res_local = list(prolog.query(f"tile({px}, {py}, Z)"))
     if res_local:
         tile_atual = str(res_local[0]['Z'])
@@ -270,16 +268,32 @@ def get_sensores():
     return brisa, passos, palmas, brilho, reflexo
 
 
-# Função que decide o alvo da exploração
+# Função que varre os destinos e testa rotas alternativas no A* para evitar travamentos
 def buscar_destino_exploracao(px, py):
     visitadas = set((res["X"], res["Y"]) for res in prolog.query("visitada(X, Y)"))
     seguras = set((res["X"], res["Y"]) for res in prolog.query("segura(X, Y)"))
     
+    try:
+        certezas_q = set((res["X"], res["Y"]) for res in prolog.query("certeza(X, Y)"))
+        seguras.update(certezas_q)
+    except Exception:
+        pass
+
     nao_visitadas = seguras - visitadas
     if not nao_visitadas:
+        print("[A*] Nenhuma casa segura inexplorada restou.")
         return None 
         
-    return min(nao_visitadas, key=lambda dest: abs(dest[0]-px) + abs(dest[1]-py))
+    destinos_ordenados = sorted(nao_visitadas, key=lambda dest: abs(dest[0]-px) + abs(dest[1]-py))
+    
+    for destino in destinos_ordenados:
+        rota = navegador.calcular_rota((px, py), destino)
+        if rota:
+            print(f"[A*] Rota encontrada com sucesso até o destino: {destino}")
+            return rota
+            
+    print("[A*] Há casas seguras, mas nenhuma possui um caminho 100% seguro conectando até elas.")
+    return None
 
 
 def update(dt, screen):
@@ -307,7 +321,7 @@ def update(dt, screen):
             comando = f"atualiza_estado({t_brisa}, {t_passos}, {t_palmas}, {t_brilho}, {t_reflexo})"
             list(prolog.query(comando))
             
-            # A*: Consome ações se houver rota pendente
+            # 1. A*: Consome ações se houver rota pendente
             if fila_acoes_a_estrela:
                 acao = fila_acoes_a_estrela.pop(0)
                 tracker.registrar_acao(acao)
@@ -317,27 +331,32 @@ def update(dt, screen):
                 elapsed_time = 0
                 return 
 
-            # Pede a Decisão
+            # 2. Pede a Decisão para o Prolog da Gabi
             acao = decisao()
+            print(f"Ação vinda do Prolog: {acao}")
             
-            # aor retornar 'explorar', aciona a navegação longa
+            # 3. Tratamento das Ações
             if acao == 'explorar':
-                destino = buscar_destino_exploracao(px, py)
-                if destino:
-                    rota = navegador.calcular_rota((px, py), destino)
-                    if rota:
-                        fila_acoes_a_estrela = navegador.converter_rota_em_acoes((px, py), rota, player_pos[2])
+                rota = buscar_destino_exploracao(px, py)
+                if rota:
+                    fila_acoes_a_estrela = navegador.converter_rota_em_acoes((px, py), rota, player_pos[2])
                 else:
-                    print("Exploração terminada: Não há mais casas seguras desconhecidas.")
-            
+                    print("Exploração sem saída válida no momento.")
             elif acao: 
-                 tracker.registrar_acao(acao)
-                 if acao == 'pegar' and brilho == 1:
-                     tracker.registrar_ouro()
-                 exec_prolog(acao)
+                tracker.registrar_acao(acao)
+                if acao == 'pegar' and brilho == 1:
+                    tracker.registrar_ouro()
+                exec_prolog(acao)
             
             update_prolog()
             tracker.atualizar_status(pontuacao, player_pos[2])
+            
+            # Exporta métricas se o agente morreu
+            if player_pos[2] == 'morto' or energia <= 0:
+                print("\n[Fim de Jogo] O agente morreu ou esgotou a energia.")
+                tracker.exportar_relatorio("mapa_atual")
+                # pygame.quit()
+                # sys.exit()
        
         elapsed_time = 0
         
