@@ -47,6 +47,7 @@ visitados = []
 certezas = []
 last_action = ""
 ganhou = False
+msg_ouro_ate = 0  # instante (ms) até quando mostra "Pegou ouro!"
 ouros_pegos = []  # casas onde o agente já coletou ouro (só pra desenhar)
 
 def decisao():
@@ -304,7 +305,7 @@ def buscar_destino_exploracao(px, py):
 
 
 def update(dt, screen):
-    global elapsed_time, posicao_anterior, fila_acoes_a_estrela, ganhou
+    global elapsed_time, posicao_anterior, fila_acoes_a_estrela, ganhou, msg_ouro_ate
     elapsed_time += dt
     if (elapsed_time / 1000) > auto_play_tempo:
         
@@ -355,6 +356,8 @@ def update(dt, screen):
                 if acao == 'pegar' and brilho == 1:
                     tracker.registrar_ouro()
                     ouros_pegos.append((px, py))
+                    msg_ouro_ate = pygame.time.get_ticks() + 2000
+                    print(f"[OURO] Pegou ouro em {(px, py)}! ({len(ouros_pegos)}/3)")
                 exec_prolog(acao)
             
             update_prolog()
@@ -475,6 +478,13 @@ def draw_screen(screen):
     t = sys_font.render(last_action, False, (255,255,255))
     screen.blit(t, t.get_rect(top = height + 5, left=width/2-40))
     
+    if pygame.time.get_ticks() < msg_ouro_ate and not ganhou:
+        t = sys_font.render("Pegou ouro! +495  (" + str(len(ouros_pegos)) + "/3)", False, (255,215,0))
+        fundo = t.get_rect(center=(width/2, 30)).inflate(30, 16)
+        pygame.draw.rect(screen, (0,0,0), fundo)
+        pygame.draw.rect(screen, (255,215,0), fundo, 2)
+        screen.blit(t, t.get_rect(center=(width/2, 30)))
+
     if ganhou:
         t = sys_font.render("GANHOU! Pontuação final: " + str(pontuacao), False, (255,215,0))
         fundo = t.get_rect(center=(width/2, height/2)).inflate(30, 20)
