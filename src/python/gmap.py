@@ -46,6 +46,8 @@ mapa=[['','','','','','','','','','','',''],
 visitados = []
 certezas = []
 last_action = ""
+ganhou = False
+ouros_pegos = []  # casas onde o agente já coletou ouro (só pra desenhar)
 
 def decisao():
     acao = ""    
@@ -268,44 +270,50 @@ def get_sensores():
     return brisa, passos, palmas, brilho, reflexo
 
 
-# Função que varre os destinos e testa rotas alternativas no A* para evitar travamentos
+# O Prolog decide QUAIS destinos explorar (e em que ordem); o A* só planeja a rota
+# sobre casas visitadas/seguras. Destino "chute" = casa suspeita de menor risco.
 def buscar_destino_exploracao(px, py):
-    visitadas = set((res["X"], res["Y"]) for res in prolog.query("visitada(X, Y)"))
-    seguras = set((res["X"], res["Y"]) for res in prolog.query("segura(X, Y)"))
-    
-    try:
-        certezas_q = set((res["X"], res["Y"]) for res in prolog.query("certeza(X, Y)"))
-        seguras.update(certezas_q)
-    except Exception:
-        pass
+    candidatos = [(r["X"], r["Y"], str(r["Tipo"])) for r in prolog.query("destino_exploracao(X, Y, Tipo)")]
 
-    nao_visitadas = seguras - visitadas
-    if not nao_visitadas:
-        print("[A*] Nenhuma casa segura inexplorada restou.")
-        return None 
-        
-    destinos_ordenados = sorted(nao_visitadas, key=lambda dest: abs(dest[0]-px) + abs(dest[1]-py))
-    
-    for destino in destinos_ordenados:
-        rota = navegador.calcular_rota((px, py), destino)
+    # 1. Casas seguras: escolhe a de rota mais curta
+    melhor = None
+    for x, y, tipo in candidatos:
+        if tipo != "seguro":
+            continue
+        rota = navegador.calcular_rota((px, py), (x, y), player_pos[2])
+        if rota is None:
+            continue
+        custo = len(navegador.converter_rota_em_acoes((px, py), rota, player_pos[2]))
+        if melhor is None or custo < melhor[2]:
+            melhor = ((x, y), rota, custo)
+    if melhor:
+        print(f"[A*] Rota segura até {melhor[0]} ({melhor[2]} ações)")
+        return melhor[1]
+
+    # 2. Sem casa segura alcançável: chute calculado (já vem ordenado por risco)
+    for x, y, tipo in candidatos:
+        if tipo != "chute":
+            continue
+        rota = navegador.calcular_rota((px, py), (x, y), player_pos[2], arriscar=True)
         if rota:
-            print(f"[A*] Rota encontrada com sucesso até o destino: {destino}")
+            print(f"[A*] Sem casas seguras alcançáveis. Chute calculado: {(x, y)}")
             return rota
-            
-    print("[A*] Há casas seguras, mas nenhuma possui um caminho 100% seguro conectando até elas.")
+
+    print("[A*] Nenhuma casa a explorar.")
     return None
 
 
 def update(dt, screen):
-    global elapsed_time, posicao_anterior, fila_acoes_a_estrela
+    global elapsed_time, posicao_anterior, fila_acoes_a_estrela, ganhou
     elapsed_time += dt
     if (elapsed_time / 1000) > auto_play_tempo:
         
-        if auto_play and player_pos[2] != 'morto':
+        if auto_play and player_pos[2] != 'morto' and not ganhou:
             px, py = player_pos[0], player_pos[1]
             
             if abs(px - posicao_anterior[0]) > 1 or abs(py - posicao_anterior[1]) > 1:
                 list(prolog.query(f"teletransporta({px}, {py})"))
+                fila_acoes_a_estrela.clear()  # rota planejada não vale mais após teletransporte
             posicao_anterior = (px, py)
             
             list(prolog.query(f"atualiza_posicao({px}, {py})"))
@@ -346,11 +354,18 @@ def update(dt, screen):
                 tracker.registrar_acao(acao)
                 if acao == 'pegar' and brilho == 1:
                     tracker.registrar_ouro()
+                    ouros_pegos.append((px, py))
                 exec_prolog(acao)
             
             update_prolog()
             tracker.atualizar_status(pontuacao, player_pos[2])
             
+            # Vitória: os 3 ouros do mapa foram coletados
+            if not ganhou and list(prolog.query("ouro_restante(0)")):
+                ganhou = True
+                print(f"\n[GANHOU!] Os 3 ouros foram coletados. Pontuação final: {pontuacao}")
+                tracker.exportar_relatorio("mapa_atual")
+
             # Exporta métricas se o agente morreu
             if player_pos[2] == 'morto' or energia <= 0:
                 print("\n[Fim de Jogo] O agente morreu ou esgotou a energia.")
@@ -432,7 +447,9 @@ def draw_screen(screen):
                 else:
                     screen.blit(bw_img_health, (x * bw_img_health.get_width(), y * bw_img_health.get_height()))                               
 
-            if mapa[11-y][x].find('O') > -1:
+            if (x+1,12-y) in ouros_pegos:
+                screen.blit(img_gold, (x * img_gold.get_width(), y * img_gold.get_height()))
+            elif mapa[11-y][x].find('O') > -1:
                 if (x+1,12-y) in certezas:
                     screen.blit(img_gold, (x * img_gold.get_width(), y * img_gold.get_height()))                
                 else:
@@ -458,6 +475,13 @@ def draw_screen(screen):
     t = sys_font.render(last_action, False, (255,255,255))
     screen.blit(t, t.get_rect(top = height + 5, left=width/2-40))
     
+    if ganhou:
+        t = sys_font.render("GANHOU! Pontuação final: " + str(pontuacao), False, (255,215,0))
+        fundo = t.get_rect(center=(width/2, height/2)).inflate(30, 20)
+        pygame.draw.rect(screen, (0,0,0), fundo)
+        pygame.draw.rect(screen, (255,215,0), fundo, 2)
+        screen.blit(t, t.get_rect(center=(width/2, height/2)))
+
     t = sys_font.render("Energia: " + str(energia), False, (255,255,255))
     screen.blit(t, t.get_rect(top = height + 5, left=width-140))
 

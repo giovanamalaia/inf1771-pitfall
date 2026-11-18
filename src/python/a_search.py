@@ -110,77 +110,57 @@ class AStarNavegador:
             
         return comandos
 
-    def calcular_rota(self, origem, destino):
+    def calcular_rota(self, origem, destino, direcao, arriscar=False):
         """
-        Executa o algoritmo A* sobre as casas permitidas pelo Prolog.
-        Se falhar por rigor estrito, tenta uma rota de escape tolerante.
+        A* sobre o estado (x, y, direção): andar e cada giro custam 1, igual à pontuação do jogo
+        (e, em casa de monstro, cada ação é mais um hit). Só passa por casas visitadas/seguras.
+        Com arriscar=True o destino (casa suspeita escolhida pelo Prolog como o "chute" de menor
+        risco) entra como último passo da rota. Heurística: distância de Manhattan (admissível).
         """
-        def rodar_astar(casas_permitidas):
-            origem_tupla = (int(origem[0]), int(origem[1]))
-            dest_tupla = (int(destino[0]), int(destino[1]))
-            
-            if dest_tupla not in casas_permitidas:
-                return None
+        origem_tupla = (int(origem[0]), int(origem[1]))
+        dest_tupla = (int(destino[0]), int(destino[1]))
+        bussola = ['norte', 'leste', 'sul', 'oeste']
+        delta = {'norte': (0, 1), 'leste': (1, 0), 'sul': (0, -1), 'oeste': (-1, 0)}
 
-            open_set = []
-            heapq.heappush(open_set, (0, origem_tupla))
-            
-            came_from = {}
-            g_score = {origem_tupla: 0}
-            f_score = {origem_tupla: self.heuristica(origem_tupla, dest_tupla)}
-            
-            while open_set:
-                _, atual = heapq.heappop(open_set)
-                
-                if atual == dest_tupla:
-                    return self.reconstruir_caminho(came_from, atual)
-                    
-                x, y = atual
-                vizinhos = [(x, y+1), (x, y-1), (x-1, y), (x+1, y)]
-                
-                for vizinho in vizinhos:
-                    if vizinho in casas_permitidas:
-                        tentativa_g = g_score[atual] + 1
-                        
-                        if vizinho not in g_score or tentativa_g < g_score[vizinho]:
-                            came_from[vizinho] = atual
-                            g_score[vizinho] = tentativa_g
-                            f_score[vizinho] = tentativa_g + self.heuristica(vizinho, dest_tupla)
-                            heapq.heappush(open_set, (f_score[vizinho], vizinho))
+        casas_permitidas = self.obter_casas_permitidas()
+        casas_permitidas.add(origem_tupla)
+        if arriscar:
+            casas_permitidas.add(dest_tupla)
+        if dest_tupla not in casas_permitidas:
             return None
 
-        # 1. Tenta a rota estritamente segura padrão
-        casas_validas = self.obter_casas_permitidas()
-        casas_validas.add((int(origem[0]), int(origem[1])) )
-        dest_tupla = (int(destino[0]), int(destino[1]))
-        
-        rota = rodar_astar(casas_validas)
-        if rota:
-            print(f"[A*] Rota encontrada com sucesso até o destino: {dest_tupla}")
-            return rota
+        inicio = (origem_tupla, str(direcao))
+        open_set = [(self.heuristica(origem_tupla, dest_tupla), 0, inicio)]
+        came_from = {}
+        g_score = {inicio: 0}
 
-        # 2. Fallback Acadêmico: Se falhou, permite passar por casas desconhecidas vizinhas (desde que não sejam poço conhecido)
-        print(f"[A*] Destino {dest_tupla} exigiria cruzar lacunas. Tentando rota flexível de escape...")
-        casas_tolerantes = casas_validas.copy()
-        
-        # Consulta o prolog para ver se há poços conhecidos para evitar estritamente
-         poco_proibido = set()
-         try:
-             for res in self.prolog.query("possivel_poco(X, Y)"):
-                 poco_proibido.add((int(res["X"]), int(res["Y"])))
-         except Exception:
-             pass
+        while open_set:
+            _, g, estado = heapq.heappop(open_set)
+            pos, dir_atual = estado
+            if g > g_score.get(estado, float('inf')):
+                continue
+            if pos == dest_tupla:
+                caminho = [pos]
+                while estado in came_from:
+                    estado = came_from[estado]
+                    if estado[0] != caminho[-1]:
+                        caminho.append(estado[0])
+                caminho.reverse()
+                return caminho[1:]
 
-        # Adiciona todas as casas do mapa que não são poços proibidos como temporariamente transitáveis
-        for x in range(1, 13):
-            for y in range(1, 13):
-                if (x, y) not in poco_proibido:
-                    casas_tolerantes.add((x, y))
+            idx = bussola.index(dir_atual) if dir_atual in bussola else 0
+            sucessores = [
+                ((pos, bussola[(idx + 1) % 4]), 1),
+                ((pos, bussola[(idx - 1) % 4]), 1),
+            ]
+            vizinho = (pos[0] + delta[dir_atual][0], pos[1] + delta[dir_atual][1])
+            if vizinho in casas_permitidas:
+                sucessores.append(((vizinho, dir_atual), 1))
 
-        rota_tolerante = rodar_astar(casas_tolerantes)
-        if rota_tolerante:
-            print(f"[A*] Rota de escape flexível encontrada até o destino: {dest_tupla}")
-            return rota_tolerante
-
-        print(f"[A*] Destino {dest_tupla} e rotas alternativas totalmente bloqueados.")
+            for novo, custo in sucessores:
+                tentativa = g + custo
+                if tentativa < g_score.get(novo, float('inf')):
+                    g_score[novo] = tentativa
+                    came_from[novo] = estado
+                    heapq.heappush(open_set, (tentativa + self.heuristica(novo[0], dest_tupla), tentativa, novo))
         return None
