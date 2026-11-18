@@ -6,11 +6,22 @@ from metrics_tracker import MetricsTracker
 import pathlib
 from a_search import AStarNavegador 
 
-current_path = str(pathlib.Path().resolve())
+current_path = pathlib.Path().resolve()
 tracker = MetricsTracker()
-pl_file = (current_path + '/../prolog/agente.pl') 
+
+# Permite passar o mapa por argumento (ex: python gmap.py mapa-dificil.pl)
+nome_mapa_arg = sys.argv[1] if len(sys.argv) > 1 else "mapa-facil.pl"
+if not nome_mapa_arg.endswith(".pl"):
+    nome_mapa_arg += ".pl"
+nome_mapa_limpo = pathlib.Path(nome_mapa_arg).stem
+
+pl_file = (current_path / '../prolog/agente.pl').resolve().as_posix()
+mapa_file = (current_path / '../../mapas' / nome_mapa_arg).resolve().as_posix()
+
 prolog = Prolog()
 prolog.consult(pl_file)
+prolog.consult(mapa_file)
+
 navegador = AStarNavegador(prolog)
 fila_acoes_a_estrela = []
 
@@ -19,7 +30,7 @@ auto_play_tempo = 0.3
 auto_play = True # false para testar controlar manualmente
 show_map = False
 
-scale = 60
+scale = 50
 size_x = 12
 size_y = 12
 width = size_x * scale  #Largura Janela
@@ -27,7 +38,8 @@ height = size_y * scale #Altura Janela
 
 player_pos = (1,1,'norte')
 posicao_anterior = (1, 1)
-energia = 0
+energia = 100
+energia_anterior = 100
 pontuacao = 0
 
 mapa=[['','','','','','','','','','','',''],
@@ -47,6 +59,7 @@ visitados = []
 certezas = []
 last_action = ""
 ganhou = False
+fim_exploracao = False
 msg_ouro_ate = 0
 ouros_pegos = []
 
@@ -64,7 +77,7 @@ def exec_prolog(a):
     last_action = a
 
 def update_prolog():
-    global player_pos, mapa, energia, pontuacao,visitados, show_map
+    global player_pos, mapa, energia, pontuacao, visitados, show_map
 
     list(prolog.query("atualiza_obs, verifica_player"))
 
@@ -138,15 +151,15 @@ def update_prolog():
     position_query.closeQuery()
 
     x = Variable()
-    energia = Functor("energia", 1)
-    energia_query = Query(energia(x))
+    energia_functor = Functor("energia", 1)
+    energia_query = Query(energia_functor(x))
     energia_query.nextSolution()
     energia = x.value
     energia_query.closeQuery()
 
     x = Variable()
-    pontuacao = Functor("pontuacao", 1)
-    pontuacao_query = Query(pontuacao(x))
+    pontuacao_functor = Functor("pontuacao", 1)
+    pontuacao_query = Query(pontuacao_functor(x))
     pontuacao_query.nextSolution()
     pontuacao = x.value
     pontuacao_query.closeQuery()
@@ -302,19 +315,47 @@ def buscar_destino_exploracao(px, py):
     return None
 
 
+def sincronizar_eventos_turno(px, py):
+    global posicao_anterior, energia_anterior, fila_acoes_a_estrela
+
+    # 1. Detecta se houve teletransporte (salto > 1 ou passou por sala 'T')
+    dx_dir = {'norte': (0, 1), 'sul': (0, -1), 'leste': (1, 0), 'oeste': (-1, 0)}
+    salto = abs(px - posicao_anterior[0]) > 1 or abs(py - posicao_anterior[1]) > 1
+    
+    # Verifica se o passo esperado caiu em um teletransportador
+    casa_tele = None
+    if last_action == 'andar' and player_pos[2] in dx_dir:
+        dx, dy = dx_dir[player_pos[2]]
+        cx, cy = posicao_anterior[0] + dx, posicao_anterior[1] + dy
+        if 1 <= cx <= 12 and 1 <= cy <= 12:
+            if list(prolog.query(f"tile({cx}, {cy}, 'T')")):
+                casa_tele = (cx, cy)
+
+    if salto or casa_tele is not None:
+        tx, ty = casa_tele if casa_tele else posicao_anterior
+        list(prolog.query(f"registra_teletransporte({tx}, {ty}, {px}, {py})"))
+        fila_acoes_a_estrela.clear()
+        print(f"[TELETRANSPORTE] Ativado em {(tx, ty)} -> acordou em {(px, py)}")
+
+    # 2. Detecta se tomou dano ao entrar na casa atual (monstro vivo confirmado)
+    if energia < energia_anterior and player_pos[2] != 'morto':
+        list(prolog.query(f"registra_monstro({px}, {py})"))
+        fila_acoes_a_estrela.clear()
+        print(f"[DANO] Inimigo confirmado em {(px, py)}! Energia: {energia}")
+
+    posicao_anterior = (px, py)
+    energia_anterior = energia
+
+
 def update(dt, screen):
-    global elapsed_time, posicao_anterior, fila_acoes_a_estrela, ganhou, msg_ouro_ate
+    global elapsed_time, fila_acoes_a_estrela, ganhou, fim_exploracao, msg_ouro_ate
     elapsed_time += dt
     if (elapsed_time / 1000) > auto_play_tempo:
         
-        if auto_play and player_pos[2] != 'morto' and not ganhou:
+        if auto_play and player_pos[2] != 'morto' and not ganhou and not fim_exploracao:
             px, py = player_pos[0], player_pos[1]
             
-            if abs(px - posicao_anterior[0]) > 1 or abs(py - posicao_anterior[1]) > 1:
-                list(prolog.query(f"teletransporta({px}, {py})"))
-                fila_acoes_a_estrela.clear()
-            posicao_anterior = (px, py)
-            
+            sincronizar_eventos_turno(px, py)
             list(prolog.query(f"atualiza_posicao({px}, {py})"))
             
             brisa, passos, palmas, brilho, reflexo = get_sensores()
@@ -335,10 +376,14 @@ def update(dt, screen):
                 exec_prolog(acao)
                 update_prolog()
                 tracker.atualizar_status(pontuacao, player_pos[2])
+                
+                if player_pos[2] == 'morto' or energia <= 0:
+                    print("\n[Fim de Jogo] O agente morreu ou esgotou a energia.")
+                    tracker.exportar_relatorio(nome_mapa_limpo)
                 elapsed_time = 0
                 return 
 
-            # 2. Pede a Decisão para o Prolog da Gabi
+            # 2. Pede a Decisão para o Prolog
             acao = decisao()
             print(f"Ação vinda do Prolog: {acao}")
             
@@ -348,7 +393,9 @@ def update(dt, screen):
                 if rota:
                     fila_acoes_a_estrela = navegador.converter_rota_em_acoes((px, py), rota, player_pos[2])
                 else:
-                    print("Exploração sem saída válida no momento.")
+                    print("\n[Fim de Exploração] Nenhuma casa segura ou alcançável restante.")
+                    fim_exploracao = True
+                    tracker.exportar_relatorio(nome_mapa_limpo)
             elif acao: 
                 tracker.registrar_acao(acao)
                 if acao == 'pegar' and brilho == 1:
@@ -361,18 +408,16 @@ def update(dt, screen):
             update_prolog()
             tracker.atualizar_status(pontuacao, player_pos[2])
             
-            # vitória
+            # Vitória
             if not ganhou and list(prolog.query("ouro_restante(0)")):
                 ganhou = True
                 print(f"\n[GANHOU!] Os 3 ouros foram coletados. Pontuação final: {pontuacao}")
-                tracker.exportar_relatorio("mapa_atual")
+                tracker.exportar_relatorio(nome_mapa_limpo)
 
             # Exporta métricas se o agente morreu
             if player_pos[2] == 'morto' or energia <= 0:
                 print("\n[Fim de Jogo] O agente morreu ou esgotou a energia.")
-                tracker.exportar_relatorio("mapa_atual")
-                # pygame.quit()
-                # sys.exit()
+                tracker.exportar_relatorio(nome_mapa_limpo)
        
         elapsed_time = 0
         
@@ -489,6 +534,12 @@ def draw_screen(screen):
         pygame.draw.rect(screen, (0,0,0), fundo)
         pygame.draw.rect(screen, (255,215,0), fundo, 2)
         screen.blit(t, t.get_rect(center=(width/2, height/2)))
+    elif fim_exploracao:
+        t = sys_font.render("FIM DA EXPLORAÇÃO! Pontuação: " + str(pontuacao), False, (255,215,0))
+        fundo = t.get_rect(center=(width/2, height/2)).inflate(30, 20)
+        pygame.draw.rect(screen, (0,0,0), fundo)
+        pygame.draw.rect(screen, (255,215,0), fundo, 2)
+        screen.blit(t, t.get_rect(center=(width/2, height/2)))
 
     t = sys_font.render("Energia: " + str(energia), False, (255,255,255))
     screen.blit(t, t.get_rect(top = height + 5, left=width-140))
@@ -516,7 +567,7 @@ def main_loop(screen):
 update_prolog()
 
 pygame.init()
-pygame.display.set_caption('INF1771 Trabalho 2 - Agente Lógico')
+pygame.display.set_caption(f'INF1771 Trabalho 2 - Agente Lógico ({nome_mapa_limpo})')
 screen = pygame.display.set_mode((width, height+30))
 load()
 

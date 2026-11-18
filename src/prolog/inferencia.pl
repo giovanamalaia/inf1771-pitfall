@@ -8,6 +8,8 @@
 :- dynamic possivel_poco/2.
 :- dynamic possivel_monstro/2.
 :- dynamic possivel_teletransporte/2.
+:- dynamic monstro_confirmado/2.
+:- dynamic teletransporte_confirmado/2.
 :- dynamic ouro_pego/2.
 :- dynamic parede/2.
 :- dynamic sentiu/3.   % sentiu(X,Y,Tipo): o que a casa visitada sentiu
@@ -41,7 +43,11 @@ registra_parede(X, Y) :-
 
 % casa sobre a qual ainda não sabemos nada
 desconhecida(X, Y) :-
-    \+ visitada(X, Y), \+ segura(X, Y), \+ parede(X, Y).
+    \+ visitada(X, Y),
+    \+ segura(X, Y),
+    \+ parede(X, Y),
+    \+ monstro_confirmado(X, Y),
+    \+ teletransporte_confirmado(X, Y).
 
 % --- Task 1.2: atualizar o estado com o que o agente sentiu ---
 
@@ -65,21 +71,27 @@ atualiza_posicao(X, Y) :-
 
 marca_visitada(X, Y, Brisa, Passos, Palmas, Ouro, Cura) :-
     afirma(visitada(X, Y)),
-    marca_segura(X, Y),
     retractall(possivel_teletransporte(X, Y)),
     retractall(sentiu(X, Y, _)),
     ( percebido(Brisa)  -> assertz(sentiu(X, Y, brisa))   ; true ),
     ( percebido(Passos) -> assertz(sentiu(X, Y, passos))  ; true ),
     ( percebido(Palmas) -> assertz(sentiu(X, Y, palmas))  ; true ),
     ( percebido(Ouro)   -> assertz(sentiu(X, Y, brilho))  ; true ),
-    ( percebido(Cura)   -> assertz(sentiu(X, Y, reflexo)) ; true ).
+    ( percebido(Cura)   -> assertz(sentiu(X, Y, reflexo)) ; true ),
+    ( \+ monstro_confirmado(X, Y), \+ teletransporte_confirmado(X, Y)
+    ->  marca_segura(X, Y)
+    ;   true
+    ).
 
-% casa segura: apaga qualquer suspeita que tinha sobre ela
+% casa segura: apaga qualquer suspeita que tinha sobre ela (se não houver perigo confirmado)
 marca_segura(X, Y) :-
     \+ parede(X, Y),
+    \+ monstro_confirmado(X, Y),
+    \+ teletransporte_confirmado(X, Y),
     retractall(possivel_poco(X, Y)),
     retractall(possivel_monstro(X, Y)),
-    afirma(segura(X, Y)).
+    afirma(segura(X, Y)), !.
+marca_segura(_, _).
 
 % --- Task 1.3: marcar as casas suspeitas ---
 
@@ -113,7 +125,7 @@ sem_teletransporte(X, Y) :-
 % palmas: uma vizinha não visitada pode ser teletransportador
 marca_teletransportes(Adj, Palmas) :-
     (   percebido(Palmas)
-    ->  forall(( member((AX,AY), Adj), \+ visitada(AX, AY) ),
+    ->  forall(( member((AX,AY), Adj), \+ visitada(AX, AY), \+ teletransporte_confirmado(AX, AY) ),
                afirma(possivel_teletransporte(AX, AY)))
     ;   true ).
 
@@ -128,7 +140,10 @@ desambigua :-
 desambigua_casa(X, Y) :-
     ( possivel_poco(X, Y),    sem_poco(X, Y)    -> retractall(possivel_poco(X, Y))    ; true ),
     ( possivel_monstro(X, Y), sem_monstro(X, Y) -> retractall(possivel_monstro(X, Y)) ; true ),
-    (   \+ possivel_poco(X, Y), \+ possivel_monstro(X, Y)
+    (   \+ possivel_poco(X, Y),
+        \+ possivel_monstro(X, Y),
+        \+ monstro_confirmado(X, Y),
+        \+ teletransporte_confirmado(X, Y)
     ->  afirma(segura(X, Y))
     ;   true ).
 
@@ -153,6 +168,20 @@ teletransporta(NX, NY) :-
     retractall(posicao_atual(_, _)),
     assertz(posicao_atual(NX, NY)).
 
+% quando cai em um teletransportador em (TX, TY) e acorda em (NX, NY)
+registra_teletransporte(TX, TY, NX, NY) :-
+    afirma(visitada(TX, TY)),
+    afirma(teletransporte_confirmado(TX, TY)),
+    retractall(segura(TX, TY)),
+    retractall(possivel_teletransporte(TX, TY)),
+    teletransporta(NX, NY).
+
+% quando entra em (X, Y) e sofre dano de inimigo
+registra_monstro(X, Y) :-
+    afirma(monstro_confirmado(X, Y)),
+    retractall(segura(X, Y)),
+    retractall(possivel_monstro(X, Y)).
+
 % --- Risco ---
 
 % depois dos 3 ouros não precisa mais explorar
@@ -166,6 +195,7 @@ chance(X, Y, Sentido, Suspeita, P) :-
     visitada(VX, VY),
     sentiu(VX, VY, Sentido),
     aggregate_all(count, ( adjacente_valida(VX, VY, AX, AY), call(Suspeita, AX, AY) ), K),
+    K > 0,
     P is 1 / K.
 
 risco(Suspeita, Sentido, X, Y, R) :-
@@ -191,12 +221,16 @@ segura_inexplorada(X, Y) :-
     \+ visitada(X, Y),
     \+ parede(X, Y),
     \+ possivel_poco(X, Y),
-    \+ possivel_monstro(X, Y).
+    \+ possivel_monstro(X, Y),
+    \+ teletransporte_confirmado(X, Y),
+    \+ monstro_confirmado(X, Y).
 
 fronteira(X, Y) :-
     ( possivel_poco(X, Y) ; possivel_monstro(X, Y) ),
     \+ visitada(X, Y),
-    \+ parede(X, Y).
+    \+ parede(X, Y),
+    \+ teletransporte_confirmado(X, Y),
+    \+ monstro_confirmado(X, Y).
 
 % ordena por risco e, no empate, pela distância
 ordenadas(Fonte, Casas) :-
@@ -217,3 +251,4 @@ destino_exploracao(X, Y, chute) :-
     ouro_restante(R), R > 0,
     ordenadas(fronteira, Casas),
     member(_-_-X-Y, Casas).
+    

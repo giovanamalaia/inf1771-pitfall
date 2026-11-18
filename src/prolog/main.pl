@@ -8,7 +8,8 @@
 :-dynamic energia/1.
 :-dynamic pontuacao/1.
 
-:- consult('../../mapas/mapa-facil.pl').
+% O mapa agora é carregado dinamicamente pelo gmap.py para permitir testar vários mapas
+% :- consult('../../mapas/mapa-facil.pl').
 
 delete([], _, []).
 delete([Elem|Tail], Del, Result) :-

@@ -7,7 +7,8 @@ class AStarNavegador:
     def obter_casas_permitidas(self):
         """
         Consulta a base de conhecimento para montar o grafo.
-        Só permite andar onde já foi visitado ou é estritamente seguro.
+        Só permite andar onde já foi visitado ou é estritamente seguro,
+        excluindo monstros e teletransportadores já confirmados.
         """
         casas = set()
         
@@ -30,6 +31,14 @@ class AStarNavegador:
                 casas.add((int(res["X"]), int(res["Y"])))
         except Exception:
             pass
+
+        # Remove salas com monstro vivo ou teletransportador confirmado
+        for pred in ["monstro_confirmado(X, Y)", "teletransporte_confirmado(X, Y)"]:
+            try:
+                for res in self.prolog.query(pred):
+                    casas.discard((int(res["X"]), int(res["Y"])))
+            except Exception:
+                pass
             
         return casas
 

@@ -21,12 +21,12 @@ decidir_acao(pegar) :-
     sentiu(X, Y, brilho),
     afirma(ouro_pego(X, Y)), !.
 
-% 2. Se sente Reflexo (Poção de Cura na sala) e energia < 100, pega
+% 2. Se sente Reflexo (Poção de Cura na sala) e energia <= 50, pega para aproveitar os +50 completos
 decidir_acao(pegar) :-
     posicao_atual(X, Y),
     sentiu(X, Y, reflexo),
     energia(E),
-    E < 100, !.
+    E =< 50, !.
 
 
 /* -------------------------------------------------------------------------
@@ -70,7 +70,8 @@ candidata_imediata(VX, VY) :-
     \+ eh_visitada(VX, VY),
     \+ possivel_poco(VX, VY),
     \+ possivel_monstro(VX, VY),
-    \+ possivel_teletransporte(VX, VY),
+    \+ teletransporte_confirmado(VX, VY),
+    \+ monstro_confirmado(VX, VY),
     \+ parede(VX, VY).
 
 % Verifica se há alguma adjacente que seja segura E inexplorada
