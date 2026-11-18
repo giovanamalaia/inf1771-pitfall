@@ -33,9 +33,7 @@ decidir_acao(pegar) :-
    TASK 2.2: EXPLORAÇÃO IMEDIATA SEGURA (PRIORIDADE ALTA)
    ------------------------------------------------------------------------- */
 
-% Entre as casas adjacentes seguras e inexploradas, escolhe a de menor custo:
-% giros necessários (cada um custa 1 ponto e, em casa de monstro, 1 hit) + risco de teletransporte.
-% Casas com suspeita de teletransportador ficam para o 'explorar' (que as deixa por último).
+% Entre as adjacentes seguras e inexploradas, vai na de menor custo (giros + risco)
 decidir_acao(Acao) :-
     posicao_atual(PX, PY),
     posicao(PX, PY, DirAtual),
@@ -55,10 +53,7 @@ decidir_acao(Acao) :-
    TASK 2.3: FUGA DE BECO SEM SAÍDA (PRIORIDADE MÉDIA)
    ------------------------------------------------------------------------- */
 
-% Se não há casa segura adjacente a explorar, delega a navegação de longo alcance ao A*
-% ('explorar'). O Python pergunta ao Prolog o destino via destino_exploracao/3, que devolve
-% as casas seguras e, se não restar nenhuma, o chute calculado (casa suspeita de menor
-% risco esperado, ver Task 1.6 em inferencia.pl).
+% Sem adjacente segura a explorar: o A* leva até o destino de destino_exploracao/3
 decidir_acao(explorar) :-
     \+ tem_adjacente_segura_inexplorada, !.
 
@@ -70,7 +65,6 @@ decidir_acao(explorar) :-
 eh_visitada(X, Y) :- visitada(X, Y), !.
 eh_visitada(X, Y) :- visitado(X, Y).
 
-% Casa adjacente segura, inexplorada e sem suspeita de poço/monstro/teletransportador
 candidata_imediata(VX, VY) :-
     segura(VX, VY),
     \+ eh_visitada(VX, VY),
@@ -86,7 +80,6 @@ tem_adjacente_segura_inexplorada :-
     adjacente_valida(PX, PY, VX, VY, _),
     candidata_imediata(VX, VY).
 
-% Número de giros (0, 1 ou 2) para ir de uma direção a outra
 giros(D, D, 0) :- !.
 giros(D1, D2, 2) :- oposta(D1, D2), !.
 giros(_, _, 1).

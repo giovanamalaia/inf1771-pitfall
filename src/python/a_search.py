@@ -111,12 +111,7 @@ class AStarNavegador:
         return comandos
 
     def calcular_rota(self, origem, destino, direcao, arriscar=False):
-        """
-        A* sobre o estado (x, y, direção): andar e cada giro custam 1, igual à pontuação do jogo
-        (e, em casa de monstro, cada ação é mais um hit). Só passa por casas visitadas/seguras.
-        Com arriscar=True o destino (casa suspeita escolhida pelo Prolog como o "chute" de menor
-        risco) entra como último passo da rota. Heurística: distância de Manhattan (admissível).
-        """
+        """A* sobre (x, y, direção): andar e girar custam 1. Com arriscar=True o destino pode ser casa suspeita."""
         origem_tupla = (int(origem[0]), int(origem[1]))
         dest_tupla = (int(destino[0]), int(destino[1]))
         bussola = ['norte', 'leste', 'sul', 'oeste']

@@ -47,8 +47,8 @@ visitados = []
 certezas = []
 last_action = ""
 ganhou = False
-msg_ouro_ate = 0  # instante (ms) até quando mostra "Pegou ouro!"
-ouros_pegos = []  # casas onde o agente já coletou ouro (só pra desenhar)
+msg_ouro_ate = 0
+ouros_pegos = []
 
 def decisao():
     acao = ""    
@@ -271,12 +271,10 @@ def get_sensores():
     return brisa, passos, palmas, brilho, reflexo
 
 
-# O Prolog decide QUAIS destinos explorar (e em que ordem); o A* só planeja a rota
-# sobre casas visitadas/seguras. Destino "chute" = casa suspeita de menor risco.
+# O Prolog escolhe os destinos; o A* só calcula a rota
 def buscar_destino_exploracao(px, py):
     candidatos = [(r["X"], r["Y"], str(r["Tipo"])) for r in prolog.query("destino_exploracao(X, Y, Tipo)")]
 
-    # 1. Casas seguras: escolhe a de rota mais curta
     melhor = None
     for x, y, tipo in candidatos:
         if tipo != "seguro":
@@ -291,7 +289,7 @@ def buscar_destino_exploracao(px, py):
         print(f"[A*] Rota segura até {melhor[0]} ({melhor[2]} ações)")
         return melhor[1]
 
-    # 2. Sem casa segura alcançável: chute calculado (já vem ordenado por risco)
+    # sem casa segura alcançável: chute calculado
     for x, y, tipo in candidatos:
         if tipo != "chute":
             continue
@@ -314,7 +312,7 @@ def update(dt, screen):
             
             if abs(px - posicao_anterior[0]) > 1 or abs(py - posicao_anterior[1]) > 1:
                 list(prolog.query(f"teletransporta({px}, {py})"))
-                fila_acoes_a_estrela.clear()  # rota planejada não vale mais após teletransporte
+                fila_acoes_a_estrela.clear()
             posicao_anterior = (px, py)
             
             list(prolog.query(f"atualiza_posicao({px}, {py})"))
@@ -363,7 +361,7 @@ def update(dt, screen):
             update_prolog()
             tracker.atualizar_status(pontuacao, player_pos[2])
             
-            # Vitória: os 3 ouros do mapa foram coletados
+            # vitória
             if not ganhou and list(prolog.query("ouro_restante(0)")):
                 ganhou = True
                 print(f"\n[GANHOU!] Os 3 ouros foram coletados. Pontuação final: {pontuacao}")
