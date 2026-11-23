@@ -321,19 +321,23 @@ def get_sensores():
 def buscar_destino_exploracao(px, py):
     candidatos = [(r["X"], r["Y"], str(r["Tipo"])) for r in prolog.query("destino_exploracao(X, Y, Tipo)")]
 
-    melhor = None
-    for x, y, tipo in candidatos:
-        if tipo != "seguro":
-            continue
-        rota = navegador.calcular_rota((px, py), (x, y), player_pos[2])
-        if rota is None:
-            continue
-        custo = len(navegador.converter_rota_em_acoes((px, py), rota, player_pos[2]))
-        if melhor is None or custo < melhor[2]:
-            melhor = ((x, y), rota, custo)
-    if melhor:
-        print(f"[A*] Rota segura até {melhor[0]} ({melhor[2]} ações)")
-        return melhor[1]
+    # Casas seguras: primeiro as SEM risco de teletransporte, depois as com risco.
+    # Em cada grupo, escolhe a de rota mais curta.
+    arriscadas = consulta_casas("possivel_teletransporte(X, Y)")
+    seguros = [(x, y) for x, y, tipo in candidatos if tipo == "seguro"]
+    for grupo in ([c for c in seguros if c not in arriscadas],
+                  [c for c in seguros if c in arriscadas]):
+        melhor = None
+        for x, y in grupo:
+            rota = navegador.calcular_rota((px, py), (x, y), player_pos[2])
+            if rota is None:
+                continue
+            custo = len(navegador.converter_rota_em_acoes((px, py), rota, player_pos[2]))
+            if melhor is None or custo < melhor[2]:
+                melhor = ((x, y), rota, custo)
+        if melhor:
+            print(f"[A*] Rota segura até {melhor[0]} ({melhor[2]} ações)")
+            return melhor[1]
 
     # sem casa segura alcançável: chute calculado
     for x, y, tipo in candidatos:

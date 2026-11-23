@@ -32,6 +32,16 @@ class AStarNavegador:
         except Exception:
             pass
 
+        # Possíveis teletransportadores: o A* não passa por eles no meio da rota
+        # (só podem ser o destino final, quando não houver opção melhor)
+        self.possiveis_tele = set()
+        try:
+            for res in self.prolog.query("possivel_teletransporte(X, Y)"):
+                self.possiveis_tele.add((int(res["X"]), int(res["Y"])))
+        except Exception:
+            pass
+        casas -= self.possiveis_tele
+
         # Remove salas com poço, monstro vivo ou teletransportador confirmado
         for pred in ["poco_confirmado(X, Y)", "monstro_confirmado(X, Y)", "teletransporte_confirmado(X, Y)"]:
             try:
@@ -128,7 +138,7 @@ class AStarNavegador:
 
         casas_permitidas = self.obter_casas_permitidas()
         casas_permitidas.add(origem_tupla)
-        if arriscar:
+        if arriscar or dest_tupla in self.possiveis_tele:
             casas_permitidas.add(dest_tupla)
         if dest_tupla not in casas_permitidas:
             return None
