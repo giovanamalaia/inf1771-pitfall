@@ -32,8 +32,8 @@ class AStarNavegador:
         except Exception:
             pass
 
-        # Remove salas com monstro vivo ou teletransportador confirmado
-        for pred in ["monstro_confirmado(X, Y)", "teletransporte_confirmado(X, Y)"]:
+        # Remove salas com poço, monstro vivo ou teletransportador confirmado
+        for pred in ["poco_confirmado(X, Y)", "monstro_confirmado(X, Y)", "teletransporte_confirmado(X, Y)"]:
             try:
                 for res in self.prolog.query(pred):
                     casas.discard((int(res["X"]), int(res["Y"])))
