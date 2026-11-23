@@ -15,7 +15,7 @@ if not nome_mapa_arg.endswith(".pl"):
     nome_mapa_arg += ".pl"
 nome_mapa_limpo = pathlib.Path(nome_mapa_arg).stem
 
-# Modo de teste (usado pelo run_testes.py): roda sem pausa e fecha sozinho no fim da partida
+# --teste: roda rápido e fecha no fim (usado no run_testes.py)
 modo_teste = '--teste' in sys.argv
 
 pl_file = (current_path / '../prolog/agente.pl').resolve().as_posix()
@@ -33,7 +33,7 @@ auto_play_tempo = 0.3
 auto_play = True # false para testar controlar manualmente
 if modo_teste:
     auto_play_tempo = 0
-MAX_ACOES = 1000 # limite de segurança: a partida acaba se o agente passar disso
+MAX_ACOES = 1000 # pra não ficar em loop
 show_map = False
 
 scale = 50
@@ -64,12 +64,12 @@ mapa=[['','','','','','','','','','','',''],
 visitados = []
 certezas = []
 last_action = ""
-ultimo_movimento = ""  # última ação executada e ainda não conferida (para detectar teletransporte)
+ultimo_movimento = ""  # pra detectar teletransporte
 ganhou = False
 fim_exploracao = False
 msg_ouro_ate = 0
 ouros_pegos = []
-seguras_nao_visitadas = set()  # casas que o agente deduziu como seguras e ainda não visitou (só para desenhar)
+seguras_nao_visitadas = set()  # contorno verde na tela
 
 def decisao():
     acao = ""    
@@ -86,7 +86,7 @@ def exec_prolog(a):
     ultimo_movimento = a
 
 def consulta_casas(consulta):
-    """Devolve o conjunto de casas (x, y) que satisfazem a consulta na base do agente."""
+    # casas (x, y) que respondem a consulta
     try:
         return {(int(r["X"]), int(r["Y"])) for r in prolog.query(consulta)}
     except Exception:
@@ -139,11 +139,8 @@ def update_prolog():
         x = Variable()
         y = Variable()
         z = Variable()    
-        # Desenha a BASE DE CONHECIMENTO DO AGENTE (inferencia.pl), não o mapa real.
-        #   chão colorido   = casa visitada
-        #   contorno verde  = casa deduzida como segura, ainda não visitada
-        #   ícone colorido  = perigo confirmado (ou ouro/cura percebidos na casa)
-        #   ícone cinza     = suspeita (possível poço / monstro / teletransportador)
+        # desenha o que o agente sabe (inferencia.pl)
+        # colorido = confirmado, cinza = suspeita, verde = segura não visitada
         poco_c    = consulta_casas("poco_confirmado(X, Y)")
         monstro_c = consulta_casas("monstro_confirmado(X, Y)")
         tele_c    = consulta_casas("teletransporte_confirmado(X, Y)")
@@ -321,8 +318,7 @@ def get_sensores():
 def buscar_destino_exploracao(px, py):
     candidatos = [(r["X"], r["Y"], str(r["Tipo"])) for r in prolog.query("destino_exploracao(X, Y, Tipo)")]
 
-    # Casas seguras: primeiro as SEM risco de teletransporte, depois as com risco.
-    # Em cada grupo, escolhe a de rota mais curta.
+    # primeiro as seguras sem risco de teletransporte, depois as outras
     arriscadas = consulta_casas("possivel_teletransporte(X, Y)")
     seguros = [(x, y) for x, y, tipo in candidatos if tipo == "seguro"]
     for grupo in ([c for c in seguros if c not in arriscadas],
@@ -355,9 +351,7 @@ def buscar_destino_exploracao(px, py):
 def sincronizar_eventos_turno(px, py):
     global posicao_anterior, energia_anterior, fila_acoes_a_estrela, ultimo_movimento
 
-    # 1. Detecta teletransporte SEM olhar o mapa real:
-    #    depois de 'andar' dentro do mapa, o agente deveria estar na casa da frente.
-    #    Se está em outro lugar, a casa da frente é um teletransportador.
+    # 1. teletransporte: andou e não está na casa da frente -> a da frente é T
     dx_dir = {'norte': (0, 1), 'sul': (0, -1), 'leste': (1, 0), 'oeste': (-1, 0)}
     casa_tele = None
     if ultimo_movimento == 'andar' and player_pos[2] in dx_dir:
@@ -365,7 +359,7 @@ def sincronizar_eventos_turno(px, py):
         cx, cy = posicao_anterior[0] + dx, posicao_anterior[1] + dy
         if 1 <= cx <= 12 and 1 <= cy <= 12 and (px, py) != (cx, cy):
             casa_tele = (cx, cy)
-    ultimo_movimento = ""  # esta ação já foi conferida
+    ultimo_movimento = ""
 
     if casa_tele is not None:
         tx, ty = casa_tele
@@ -391,7 +385,7 @@ def update(dt, screen):
         if auto_play and player_pos[2] != 'morto' and not ganhou and not fim_exploracao:
             px, py = player_pos[0], player_pos[1]
 
-            # Limite de segurança contra loop
+            # limite de ações
             if tracker.acoes_executadas >= MAX_ACOES:
                 print(f"\n[Fim] Limite de {MAX_ACOES} ações atingido.")
                 fim_exploracao = True
@@ -436,9 +430,7 @@ def update(dt, screen):
                 rota = buscar_destino_exploracao(px, py)
                 if rota:
                     fila_acoes_a_estrela = navegador.converter_rota_em_acoes((px, py), rota, player_pos[2])
-                    # Já executa a 1ª ação da rota neste turno. Se o turno ficasse parado,
-                    # o motor (verifica_player) daria dano de novo numa casa de monstro,
-                    # a rota seria apagada e o agente ficaria preso até morrer.
+                    # já anda nesse turno (parado em casa de monstro ele leva dano de novo e trava)
                     if fila_acoes_a_estrela:
                         primeira = fila_acoes_a_estrela.pop(0)
                         tracker.registrar_acao(primeira)
@@ -618,7 +610,7 @@ def main_loop(screen):
 
         pygame.display.update() 
 
-        # No modo de teste, fecha sozinho quando a partida termina
+        # no modo teste fecha quando acaba
         if modo_teste and (ganhou or fim_exploracao or player_pos[2] == 'morto' or energia <= 0):
             running = False
 

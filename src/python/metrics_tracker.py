@@ -41,7 +41,7 @@ class MetricsTracker:
             print(f"Sobreviveu:       {'Sim' if self.sobreviveu else 'Não'}")
             print("="*30 + "\n")
             
-            # Sempre salva ao lado deste arquivo (ou onde o run_testes.py mandar)
+            # salva na pasta src/python (ou onde o run_testes mandar)
             arquivo_csv = os.environ.get(
                 "RELATORIO_CSV",
                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "relatorio_metricas.csv"))

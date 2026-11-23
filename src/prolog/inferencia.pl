@@ -153,9 +153,8 @@ desambigua_casa(X, Y) :-
     ->  afirma(segura(X, Y))
     ;   true ).
 
-% --- Task 1.4 (parte 2): confirmar poço ---
-% Se uma casa visitada sentiu brisa e só UMA vizinha dela ainda pode ter poço,
-% então o poço está com certeza nessa vizinha.
+% --- Task 1.4: confirmar poço ---
+% brisa e só uma vizinha pode ter poço -> o poço é ela
 pode_ter_poco(X, Y) :-
     \+ visitada(X, Y),
     \+ segura(X, Y),
@@ -170,20 +169,19 @@ infere_pocos :-
              findall((AX,AY), ( adjacente_valida(X, Y, AX, AY), pode_ter_poco(AX, AY) ), [(PX,PY)]) ),
            confirma_poco(PX, PY)).
 
-% uma casa só tem um elemento: se é poço, não é monstro nem teletransportador
+% se é poço, não é monstro nem teletransporte
 confirma_poco(X, Y) :-
     afirma(poco_confirmado(X, Y)),
     afirma(possivel_poco(X, Y)),
     retractall(possivel_monstro(X, Y)),
     retractall(possivel_teletransporte(X, Y)).
 
-% --- Mesma ideia para monstro (passos) e teletransportador (palmas) ---
-% Uma casa que já é monstro/teletransportador confirmado continua sendo candidata:
-% assim ela "explica" os passos/palmas e nenhuma outra casa é confirmada por engano.
+% --- mesma coisa pra monstro (passos) e teletransporte (palmas) ---
+% o que já foi confirmado continua contando, pra não confirmar outra casa errado
 
 pode_ter_monstro(X, Y) :- monstro_confirmado(X, Y), !.
 pode_ter_monstro(X, Y) :-
-    \+ visitada(X, Y),          % visitou sem levar dano: não é monstro
+    \+ visitada(X, Y),          % passou ali sem dano
     \+ segura(X, Y),
     \+ parede(X, Y),
     \+ poco_confirmado(X, Y),
@@ -202,10 +200,10 @@ confirma_monstro(X, Y) :-
     retractall(possivel_poco(X, Y)),
     retractall(possivel_teletransporte(X, Y)).
 
-% "segura" não exclui teletransportador (ele não mata direto), por isso não entra aqui
+% aqui não usa segura/2, porque segura não descarta teletransporte
 pode_ter_teletransporte(X, Y) :- teletransporte_confirmado(X, Y), !.
 pode_ter_teletransporte(X, Y) :-
-    \+ visitada(X, Y),          % o agente nunca consegue ficar parado num teletransportador
+    \+ visitada(X, Y),          % não dá pra ficar parado num T
     \+ parede(X, Y),
     \+ poco_confirmado(X, Y),
     \+ monstro_confirmado(X, Y),
@@ -246,9 +244,7 @@ teletransporta(NX, NY) :-
     assertz(posicao_atual(NX, NY)).
 
 % quando cai em um teletransportador em (TX, TY) e acorda em (NX, NY)
-% A casa T NÃO conta como visitada: o agente não percebeu nada nela.
-% Se contasse, as regras achariam que ela "não sentiu brisa/passos" e
-% marcariam as vizinhas dela como seguras (mesmo podendo ser poço).
+% a casa T não conta como visitada (não sentiu nada lá, senão as vizinhas viravam seguras)
 registra_teletransporte(TX, TY, NX, NY) :-
     retractall(visitada(TX, TY)),
     retractall(sentiu(TX, TY, _)),

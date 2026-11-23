@@ -65,8 +65,7 @@ decidir_acao(explorar) :-
 eh_visitada(X, Y) :- visitada(X, Y), !.
 eh_visitada(X, Y) :- visitado(X, Y).
 
-% Possível teletransportador não entra aqui: só vamos até ele pelo A* (explorar)
-% quando não existir nenhuma outra casa segura sem risco para explorar.
+% possível teletransporte fica de fora (só vai pelo A* se não tiver outra opção)
 candidata_imediata(VX, VY) :-
     segura(VX, VY),
     \+ eh_visitada(VX, VY),

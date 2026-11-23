@@ -1,16 +1,5 @@
-"""
-Task 3.5 - Bateria de testes.
-Roda o agente N vezes em cada mapa (o teletransporte é aleatório, então uma rodada só não basta)
-e gera um resumo com pontuação, ouro, ações e sobrevivência.
-
-Uso (dentro de src/python):
-    python run_testes.py        -> 10 rodadas por mapa
-    python run_testes.py 5      -> 5 rodadas por mapa
-
-Saídas (nesta pasta):
-    resultados_testes.csv  -> uma linha por rodada
-    resumo_testes.csv      -> médias por mapa (para mostrar no vídeo)
-"""
+# Task 3.5 - roda cada mapa N vezes e gera o resumo
+# uso: python3 run_testes.py 10
 import csv
 import os
 import pathlib
